@@ -147,6 +147,7 @@ add_shortcode('stormglass_astronomy', function($atts) {
         // Debug: Log API request
         error_log('Stormglass: Fetching new API data for ' . $start . ' to ' . $end);
         $url = "https://api.stormglass.io/v2/astronomy/point?lat={$lat}&lng={$lon}&start={$start}&end={$end}";
+        error_log('Stormglass: Requesting URL - ' . $url); // Added
         $response = wp_remote_get($url, [
             'headers' => ['Authorization' => $api_key],
             'timeout' => 15,
@@ -157,6 +158,7 @@ add_shortcode('stormglass_astronomy', function($atts) {
         }
 
         $body = wp_remote_retrieve_body($response);
+        error_log('Stormglass: Raw API response body - ' . $body); // Added
         $json = json_decode($body, true);
 
         if (isset($json['errors'])) {
@@ -171,6 +173,25 @@ add_shortcode('stormglass_astronomy', function($atts) {
         error_log('Stormglass: API returned ' . count($astronomy_data) . ' days');
         set_transient($cache_key, $astronomy_data, 60 * 60 * 24 * 30);
     }
+
+    // Filter data for the next 7 days starting from today
+    $today_str = date('Y-m-d');
+    $seven_days_later_str = date('Y-m-d', strtotime('+6 days')); // Today + 6 more days = 7 days total
+    $filtered_data = [];
+
+    if (is_array($astronomy_data)) {
+        foreach ($astronomy_data as $item) {
+            if (isset($item['time'])) {
+                $item_date_str = date('Y-m-d', strtotime($item['time']));
+                if ($item_date_str >= $today_str && $item_date_str <= $seven_days_later_str) {
+                    $filtered_data[] = $item;
+                }
+            }
+        }
+    }
+    $astronomy_data = $filtered_data; // Replace original data with filtered data
+    // Debug: Log number of days after filtering
+    error_log('Stormglass: Filtered to ' . count($astronomy_data) . ' days for the next 7 days.');
 
     $fields = array_map('trim', explode(',', $atts['fields']));
     $valid_fields = ['date', 'sunrise', 'sunset', 'moonrise', 'moonset', 'moonphase'];

@@ -1,60 +1,31 @@
-.stormglass-astronomy-table {
-    border-collapse: collapse;
-    width: 100%;
-    max-width: 800px;
-    margin: 0 auto;
-    font-family: Arial, sans-serif;
-    background: #f9f9f9;
-    border: 1px solid #ddd;
+/* WeatherAPI Astronomy Plugin Styles */
+.weatherapi-astronomy-wrapper {
+    margin-bottom: 20px;
+    overflow-x: auto; /* For responsive handling of wide tables */
 }
 
-.stormglass-astronomy-table th,
-.stormglass-astronomy-table td {
+.weatherapi-astronomy-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.9em;
+}
+
+.weatherapi-astronomy-table th,
+.weatherapi-astronomy-table td {
     border: 1px solid #ddd;
     padding: 8px;
-    text-align: center;
+    text-align: left;
 }
 
-.stormglass-astronomy-table th {
-    background: #f1f1f1;
+.weatherapi-astronomy-table th {
+    background-color: #f2f2f2;
     font-weight: bold;
-    color: #333;
 }
 
-.stormglass-astronomy-table tr:nth-child(even) {
-    background: #fff;
+.weatherapi-astronomy-table tbody tr:nth-child(even) {
+    background-color: #f9f9f9;
 }
 
-.stormglass-astronomy-table tr:hover {
-    background: #f5f5f5;
-}
-
-.stormglass-astronomy-table .moon-phase {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-    font-size: 1.1em;
-}
-
-.stormglass-error {
-    color: #d8000c;
-    background: #ffe6e6;
-    padding: 10px;
-    border-radius: 4px;
-    text-align: center;
-}
-
-@media (max-width: 600px) {
-    .stormglass-astronomy-table {
-        font-size: 14px;
-    }
-    .stormglass-astronomy-table th,
-    .stormglass-astronomy-table td {
-        padding: 6px;
-    }
-    .stormglass-astronomy-table .moon-phase {
-        font-size: 1em;
-        gap: 5px;
-    }
+.weatherapi-astronomy-table tbody tr:hover {
+    background-color: #f1f1f1;
 }

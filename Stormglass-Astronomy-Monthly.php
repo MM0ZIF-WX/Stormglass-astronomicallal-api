@@ -1,7 +1,7 @@
 <?php
 /*
 Plugin Name: Stormglass Astronomy Monthly
-Description: Display sunrise, sunset, moonrise, moonset, and moon phase (with graphics) for a coordinate using Stormglass API, with 30-day caching, admin settings, and widget support.
+Description: Display sunrise, sunset, moonrise, moonset, and moon phase (with graphics) for a coordinate using Stormglass API, with 30-day caching, admin settings, and widget support. Now supports a rolling 30-day view via shortcode/widget.
 Version: 1.5
 Author: Marcus Hazel-McGown - MM0ZIF
 Author URI: https://mm0zif.radio
@@ -112,12 +112,16 @@ function stormglass_get_moon_phase_icon($phase) {
 }
 
 // 4. Shortcode
-add_shortcode('stormglass_astronomy', function($atts) {
-    $atts = shortcode_atts([
-        'start' => date('Y-m-01'),
-        'end' => date('Y-m-t'),
-        'fields' => 'all',
-    ], $atts, 'stormglass_astronomy');
+add_shortcode('stormglass_astronomy', function($user_atts) { // MODIFIED: $atts to $user_atts
+    // Default values for attributes
+    $default_values = [
+        'start' => '',  // Optional. Specific start date (YYYY-MM-DD). Overrides 'period'.
+        'end' => '',    // Optional. Specific end date (YYYY-MM-DD). Overrides 'period'.
+        'fields' => 'all', // Optional. Comma-separated fields (e.g., date,sunrise,sunset).
+        'period' => '', // Optional. Set to '30days' for a rolling 30-day window from the current date. Ignored if 'start' or 'end' are set.
+    ];
+    // Merge user-supplied attributes (from $user_atts) with defaults
+    $atts = shortcode_atts($default_values, $user_atts, 'stormglass_astronomy');
 
     $api_key = get_option('stormglass_api_key');
     $lat = get_option('stormglass_lat');
@@ -130,15 +134,54 @@ add_shortcode('stormglass_astronomy', function($atts) {
         return '<div class="stormglass-error">' . __('Invalid latitude or longitude values.', 'stormglass-astronomy') . '</div>';
     }
 
-    $start = date('Y-m-d', strtotime($atts['start']));
-    $end = date('Y-m-d', strtotime($atts['end']));
-    // Debug: Log the start and end dates
-    error_log('Stormglass: Date range - Start: ' . $start . ', End: ' . $end);
+    $start_date_for_api_str;
+    $end_date_for_api_str;
+
+    // Determine effective start and end dates based on precedence:
+    // 1. User explicitly provides 'start' and 'end' in $user_atts
+    if (!empty($user_atts['start']) && !empty($user_atts['end'])) {
+        $start_date_for_api_str = $user_atts['start'];
+        $end_date_for_api_str = $user_atts['end'];
+    }
+    // 2. Else if user provides only 'start' in $user_atts
+    else if (!empty($user_atts['start'])) {
+        $start_date_for_api_str = $user_atts['start'];
+        // Default end to end of the month of 'start'
+        $end_date_for_api_str = date('Y-m-t', strtotime($start_date_for_api_str));
+    }
+    // 3. Else if user provides only 'end' in $user_atts
+    else if (!empty($user_atts['end'])) {
+        $end_date_for_api_str = $user_atts['end'];
+        // Default start to beginning of the month of 'end'
+        $start_date_for_api_str = date('Y-m-01', strtotime($end_date_for_api_str));
+    }
+    // 4. Else if 'period' is '30days' (derived from $atts['period'], meaning it could be a default or user-supplied if not overriding start/end)
+    else if (isset($atts['period']) && $atts['period'] === '30days') {
+        // Check if specific start/end were given by user; if so, they take precedence over period.
+        // This condition is only met if $user_atts['start'] and $user_atts['end'] were empty.
+        $current_date = new DateTime();
+        $start_date_for_api_str = $current_date->format('Y-m-d');
+        $end_date_for_api_str = (clone $current_date)->modify('+29 days')->format('Y-m-d');
+    }
+    // 5. Else (no user start/end, 'period' is not '30days') -> default to current month's first and last day
+    else {
+        $start_date_for_api_str = date('Y-m-01');
+        $end_date_for_api_str = date('Y-m-t');
+    }
+
+    // These are then formatted and used for the API call
+    $start = date('Y-m-d', strtotime($start_date_for_api_str));
+    $end = date('Y-m-d', strtotime($end_date_for_api_str));
+
+    // Add some debug logging (these can be removed after testing)
+    error_log('[Stormglass Plugin] Raw User Atts: ' . print_r($user_atts, true));
+    error_log('[Stormglass Plugin] Processed Atts (merged with defaults): ' . print_r($atts, true));
+    error_log('[Stormglass Plugin] Final API Dates - Start: ' . $start . ', End: ' . $end . ', Period from $atts: ' . $atts['period']);
     if (strtotime($end) < strtotime($start)) {
         return '<div class="stormglass-error">' . __('End date cannot be before start date.', 'stormglass-astronomy') . '</div>';
     }
 
-    $cache_key = 'stormglass_astronomy_' . md5($lat . ',' . $lon . '_' . $start . '_' . $end);
+    $cache_key = 'stormglass_astronomy_' . md5($lat . ',' . $lon . '_' . $start . '_' . $end . '_' . $atts['fields']);
     // Debug: Log the cache key
     error_log('Stormglass: Cache key - ' . $cache_key);
     $astronomy_data = get_transient($cache_key);
@@ -238,13 +281,26 @@ class Stormglass_Astronomy_Widget extends WP_Widget {
         if (!empty($instance['title'])) {
             echo $args['before_title'] . apply_filters('widget_title', $instance['title']) . $args['after_title'];
         }
+
         $shortcode = '[stormglass_astronomy';
-        if (!empty($instance['start'])) {
-            $shortcode .= ' start="' . esc_attr($instance['start']) . '"';
+        $display_period = !empty($instance['display_period']) ? $instance['display_period'] : 'current_month';
+
+        // If start or end dates are explicitly set in the widget, they take precedence.
+        if (!empty($instance['start']) || !empty($instance['end'])) {
+            if (!empty($instance['start'])) {
+                $shortcode .= ' start="' . esc_attr($instance['start']) . '"';
+            }
+            if (!empty($instance['end'])) {
+                $shortcode .= ' end="' . esc_attr($instance['end']) . '"';
+            }
+        } else {
+            // No explicit dates, use display_period setting
+            if ($display_period === 'next_30_days') {
+                $shortcode .= ' period="30days"';
+            }
+            // If 'current_month', no specific date/period attribute needed, shortcode defaults to current month.
         }
-        if (!empty($instance['end'])) {
-            $shortcode .= ' end="' . esc_attr($instance['end']) . '"';
-        }
+
         if (!empty($instance['fields'])) {
             $shortcode .= ' fields="' . esc_attr($instance['fields']) . '"';
         }
@@ -258,6 +314,7 @@ class Stormglass_Astronomy_Widget extends WP_Widget {
         $start = !empty($instance['start']) ? $instance['start'] : '';
         $end = !empty($instance['end']) ? $instance['end'] : '';
         $fields = !empty($instance['fields']) ? $instance['fields'] : 'all';
+        $display_period = !empty($instance['display_period']) ? $instance['display_period'] : 'current_month';
         ?>
         <p>
             <label for="<?php echo esc_attr($this->get_field_id('title')); ?>"><?php _e('Title:', 'stormglass-astronomy'); ?></label>
@@ -270,6 +327,14 @@ class Stormglass_Astronomy_Widget extends WP_Widget {
         <p>
             <label for="<?php echo esc_attr($this->get_field_id('end')); ?>"><?php _e('End Date (YYYY-MM-DD):', 'stormglass-astronomy'); ?></label>
             <input class="widefat" id="<?php echo esc_attr($this->get_field_id('end')); ?>" name="<?php echo esc_attr($this->get_field_name('end')); ?>" type="text" value="<?php echo esc_attr($end); ?>" />
+        </p>
+        <p><em><?php _e('Note: If Start Date or End Date are specified, they will override the "Display Period" setting. Leave them blank to use the selected period.', 'stormglass-astronomy'); ?></em></p>
+        <p>
+            <label for="<?php echo esc_attr($this->get_field_id('display_period')); ?>"><?php _e('Display Period:', 'stormglass-astronomy'); ?></label>
+            <select class="widefat" id="<?php echo esc_attr($this->get_field_id('display_period')); ?>" name="<?php echo esc_attr($this->get_field_name('display_period')); ?>">
+                <option value="current_month" <?php selected($display_period, 'current_month'); ?>><?php _e('Current Month', 'stormglass-astronomy'); ?></option>
+                <option value="next_30_days" <?php selected($display_period, 'next_30_days'); ?>><?php _e('Next 30 Days', 'stormglass-astronomy'); ?></option>
+            </select>
         </p>
         <p>
             <label for="<?php echo esc_attr($this->get_field_id('fields')); ?>"><?php _e('Fields (comma-separated, e.g., date,sunrise,sunset):', 'stormglass-astronomy'); ?></label>
@@ -284,6 +349,7 @@ class Stormglass_Astronomy_Widget extends WP_Widget {
         $instance['start'] = !empty($new_instance['start']) ? sanitize_text_field($new_instance['start']) : '';
         $instance['end'] = !empty($new_instance['end']) ? sanitize_text_field($new_instance['end']) : '';
         $instance['fields'] = !empty($new_instance['fields']) ? sanitize_text_field($new_instance['fields']) : 'all';
+        $instance['display_period'] = !empty($new_instance['display_period']) && in_array($new_instance['display_period'], ['current_month', 'next_30_days']) ? sanitize_text_field($new_instance['display_period']) : 'current_month';
         return $instance;
     }
 }

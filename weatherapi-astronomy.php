@@ -267,6 +267,17 @@ add_action('admin_init', 'waa_handle_clear_cache_action');
  * @return string HTML output for the astronomy table or error message.
  */
 function waa_shortcode_render_astronomy_table($atts) {
+    $moon_phase_icons = [
+        'New Moon'         => '🌑',
+        'Waxing Crescent'  => '🌒',
+        'First Quarter'    => '🌓',
+        'Waxing Gibbous'   => '🌔',
+        'Full Moon'        => '🌕',
+        'Waning Gibbous'   => '🌖',
+        'Last Quarter'     => '🌗',
+        'Waning Crescent'  => '🌘',
+    ];
+
     // For now, ignore attributes, use current month.
     // $atts = shortcode_atts([], $atts, 'weatherapi_astronomy');
 
@@ -313,7 +324,13 @@ function waa_shortcode_render_astronomy_table($atts) {
                         <td><?php echo esc_html($day_data->sunset); ?></td>
                         <td><?php echo esc_html($day_data->moonrise); ?></td>
                         <td><?php echo esc_html($day_data->moonset); ?></td>
-                        <td><?php echo esc_html($day_data->moon_phase); ?></td>
+                        <td>
+                            <?php
+                            $phase_text = $day_data->moon_phase;
+                            $icon = isset($moon_phase_icons[$phase_text]) ? $moon_phase_icons[$phase_text] . ' ' : '';
+                            echo esc_html($icon . $phase_text);
+                            ?>
+                        </td>
                         <td><?php echo esc_html($day_data->moon_illumination); ?>%</td>
                     <?php else : ?>
                         <td colspan="6"><?php _e('Data unavailable for this day.', 'weatherapi-astronomy'); ?></td>

@@ -7,7 +7,7 @@ Displays monthly astronomical data (sunrise, sunset, moonrise, moonset, moon pha
 This plugin fetches daily astronomical data for an entire month from WeatherAPI.com and displays it in a table format. It includes:
 - Sunrise and sunset times.
 - Moonrise and moonset times.
-- Moon phase (text description).
+- Moon phase (text description with corresponding icon).
 - Moon illumination (percentage).
 - Data is cached for 12 hours to minimize API calls.
 - Provides an admin settings page to configure API key and location.
